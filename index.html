@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Particle System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 50%, #16213e 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #ff6b6b, #ffd93d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+
+        canvas {
+            border: 3px solid rgba(255, 255, 255, 0.2);
+            background: #000080;
+            display: block;
+            margin: 20px auto;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            cursor: crosshair;
+        }
+
+        .info {
+            margin-top: 25px;
+            font-size: 16px;
+            color: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .info-item {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .info-item strong {
+            color: #ffd93d;
+            font-weight: 600;
+        }
+
+        .instructions {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #b0b0b0;
+            font-style: italic;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.8em;
+            }
+            
+            canvas {
+                width: 90vw;
+                height: 90vw;
+            }
+            
+            .info {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Interactive Particle System</h1>
+        <canvas id="particleCanvas"></canvas>
+        <div class="info">
+            <div class="info-item">
+                <strong>Particles:</strong> <span id="particleCount">300</span>
+            </div>
+            <div class="info-item">
+                <strong>FPS:</strong> <span id="fps">60</span>
+            </div>
+        </div>
+        <div class="instructions">
+            Move your mouse over the canvas to interact with particles | Click to push particles away
+        </div>
+    </div>
+
+    <script>
+        // Canvas setup
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+        const particleCountEl = document.getElementById('particleCount');
+        const fpsEl = document.getElementById('fps');
+        
+        // Constants
+        const SIZE = 500;
+        const NUM_PARTICLES = 300;
+        const MOUSE_INFLUENCE_RADIUS = 100;
+        const MOUSE_REPULSE_DISTANCE = 20;
+        const ATTRACTION_FORCE = 0.3;
+        const CLICK_REPULSE_RADIUS = 150;
+        const CLICK_REPULSE_FORCE = 5.0;
+        const FRICTION = 0.95;
+        const BOUNCE_DAMPING = 0.8;
+        
+        // Set canvas size
+        canvas.width = SIZE;
+        canvas.height = SIZE;
+        
+        // Optimize canvas rendering
+        ctx.imageSmoothingEnabled = false; // Faster rendering for small particles
+        
+        // Particle class
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * SIZE;
+                this.y = Math.random() * SIZE;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = 2;
+            }
+            
+            update(mouseX, mouseY, mouseValid, clicks) {
+                // Click repulsion (stronger than mouse attraction) - handle all active clicks
+                for (let i = 0; i < clicks.length; i++) {
+                    const click = clicks[i];
+                    const dx = this.x - click.x;
+                    const dy = this.y - click.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist > 0 && dist < CLICK_REPULSE_RADIUS) {
+                        // Strong repulsion force that decreases with distance
+                        const force = CLICK_REPULSE_FORCE * (1 - dist / CLICK_REPULSE_RADIUS);
+                        this.vx += (dx / dist) * force;
+                        this.vy += (dy / dist) * force;
+                    }
+                }
+                
+                // Mouse interaction
+                if (mouseValid) {
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist > 0 && dist < MOUSE_INFLUENCE_RADIUS) {
+                        let attractionForce = ATTRACTION_FORCE;
+                        
+                        // Push away when very close
+                        if (dist < MOUSE_REPULSE_DISTANCE) {
+                            attractionForce = -ATTRACTION_FORCE * 2;
+                        }
+                        
+                        this.vx += (dx / dist) * attractionForce;
+                        this.vy += (dy / dist) * attractionForce;
+                    }
+                }
+                
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // Bounce off walls
+                if (this.x < 0) {
+                    this.x = 0;
+                    this.vx = -this.vx * BOUNCE_DAMPING;
+                } else if (this.x >= SIZE) {
+                    this.x = SIZE - 1;
+                    this.vx = -this.vx * BOUNCE_DAMPING;
+                }
+                
+                if (this.y < 0) {
+                    this.y = 0;
+                    this.vy = -this.vy * BOUNCE_DAMPING;
+                } else if (this.y >= SIZE) {
+                    this.y = SIZE - 1;
+                    this.vy = -this.vy * BOUNCE_DAMPING;
+                }
+                
+                // Apply friction
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+            }
+            
+        }
+        
+        // Initialize particles
+        const particles = [];
+        for (let i = 0; i < NUM_PARTICLES; i++) {
+            particles.push(new Particle());
+        }
+        
+        // Mouse tracking
+        let mouseX = 0;
+        let mouseY = 0;
+        let mouseValid = false;
+        
+        // Click tracking - array to support multiple simultaneous clicks
+        const clicks = [];
+        const CLICK_DURATION = 200; // milliseconds
+        
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+            mouseValid = true;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            mouseValid = false;
+        });
+        
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            clicks.push({
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top,
+                time: performance.now()
+            });
+        });
+        
+        // FPS counter
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 60;
+        
+        // Animation loop
+        function animate(currentTime) {
+            // Calculate FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                fpsEl.textContent = fps;
+            }
+            
+            // Clear and fill canvas background
+            ctx.fillStyle = '#000080';
+            ctx.fillRect(0, 0, SIZE, SIZE);
+            
+            // Draw border (no expensive shadow effects)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(2, 2, SIZE - 4, SIZE - 4);
+            
+            // Remove expired clicks
+            for (let i = clicks.length - 1; i >= 0; i--) {
+                if (currentTime - clicks[i].time > CLICK_DURATION) {
+                    clicks.splice(i, 1);
+                }
+            }
+            
+            // Update and draw particles (optimized loop)
+            ctx.fillStyle = '#ff0000';
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                p.update(mouseX, mouseY, mouseValid, clicks);
+                // Draw particle (optimized - single path per particle)
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Draw all active click effects (expanding circles)
+            for (let i = 0; i < clicks.length; i++) {
+                const click = clicks[i];
+                const elapsed = currentTime - click.time;
+                const progress = Math.min(elapsed / CLICK_DURATION, 1);
+                const radius = progress * CLICK_REPULSE_RADIUS;
+                const alpha = 1 - progress;
+                
+                ctx.strokeStyle = `rgba(255, 255, 0, ${alpha})`;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(click.x, click.y, radius, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                // Draw center dot
+                ctx.fillStyle = '#ffff00';
+                ctx.beginPath();
+                ctx.arc(click.x, click.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Draw mouse cursor (no expensive shadow)
+            if (mouseValid) {
+                ctx.fillStyle = '#ffff00';
+                ctx.beginPath();
+                ctx.arc(mouseX, mouseY, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Start animation
+        animate(performance.now());
+    </script>
+</body>
+</html>
