@@ -113,7 +113,7 @@
             </div>
         </div>
         <div class="instructions">
-            Move your mouse over the canvas to interact with particles | Click to push particles away
+            Move your mouse over the canvas to interact with particles | Click to push particles away | Touch & drag or tap on mobile
         </div>
     </div>
 
@@ -252,6 +252,88 @@
                 y: e.clientY - rect.top,
                 time: performance.now()
             });
+        });
+        
+        // Touch event handlers
+        let touchStartTime = 0;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchMoved = false;
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevent scrolling
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            
+            if (touch) {
+                touchStartX = touch.clientX - rect.left;
+                touchStartY = touch.clientY - rect.top;
+                touchStartTime = performance.now();
+                touchMoved = false;
+                
+                // Update mouse position for drag
+                mouseX = touchStartX;
+                mouseY = touchStartY;
+                mouseValid = true;
+            }
+        }, { passive: false });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // Prevent scrolling while dragging
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            
+            if (touch) {
+                const currentX = touch.clientX - rect.left;
+                const currentY = touch.clientY - rect.top;
+                
+                // Check if touch moved significantly (more than 5px)
+                const dx = currentX - touchStartX;
+                const dy = currentY - touchStartY;
+                if (Math.sqrt(dx * dx + dy * dy) > 5) {
+                    touchMoved = true;
+                }
+                
+                // Update mouse position for drag effect
+                mouseX = currentX;
+                mouseY = currentY;
+                mouseValid = true;
+            }
+        }, { passive: false });
+        
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.changedTouches[0];
+            
+            if (touch && !touchMoved) {
+                // If it was a tap (not a drag), treat it as a click
+                const tapX = touch.clientX - rect.left;
+                const tapY = touch.clientY - rect.top;
+                clicks.push({
+                    x: tapX,
+                    y: tapY,
+                    time: performance.now()
+                });
+            }
+            
+            // Check if there are still active touches
+            if (e.touches.length === 0) {
+                mouseValid = false;
+            } else {
+                // Update position to the remaining touch
+                const remainingTouch = e.touches[0];
+                mouseX = remainingTouch.clientX - rect.left;
+                mouseY = remainingTouch.clientY - rect.top;
+                mouseValid = true;
+            }
+            
+            touchMoved = false;
+        }, { passive: false });
+        
+        canvas.addEventListener('touchcancel', (e) => {
+            mouseValid = false;
+            touchMoved = false;
         });
         
         // FPS counter
